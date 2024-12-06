@@ -3,6 +3,10 @@ source "https://rubygems.org"
 # rufo 
 gem 'rufo'
 
+
+# Cors
+gem 'rack-cors', require: 'rack/cors'
+
 # JWT
 gem 'jwt'
 
