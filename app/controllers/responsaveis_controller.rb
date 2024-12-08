@@ -4,8 +4,8 @@ class ResponsaveisController < ApplicationController
 
   # GET /responsaveis
   def index
-    @responsaveis = Responsavel.all
-    render json: @responsaveis
+    @responsaveis = Responsavel.includes(:empresa, :ict).all
+    render json: @responsaveis.as_json(include: { empresa: { only: [:id, :nome] }, ict: { only: [:id, :nome] } })
   end
 
   # GET /responsaveis/:id
@@ -49,7 +49,7 @@ class ResponsaveisController < ApplicationController
   end
 
   def responsavel_params
-    params.permit(:nome, :cargo, :email, :password, :password_confirmation, :empresa_id, :ict_id, :tipo)
+    params.require(:responsavel).permit(:nome, :cargo, :email, :password, :password_confirmation, :empresa_id, :ict_id, :tipo)
   end
 
   def authorize_admin
