@@ -1,12 +1,41 @@
 class ContratosController < ApplicationController
   before_action :authenticate_user
-  before_action :authorize_empresa
+  before_action :authorize_user_access, only: [:index]
   before_action :set_contrato, only: [:show, :update, :destroy]
 
   # GET /contratos
   def index
-    @contratos = Contrato.includes(interesse: [:projeto, :responsavel]).all
-    render json: @contratos, include: { interesse: { include: [:projeto, :responsavel] } }
+    if @current_responsavel.empresa?
+      # Contratos associados aos projetos da empresa
+      @contratos = Contrato.joins(interesse: :projeto)
+                           .where(projetos: { empresa_id: @current_responsavel.empresa_id })
+                           .includes(interesse: { projeto: :empresa, responsavel: :ict })
+    elsif @current_responsavel.ict?
+      # Contratos associados aos interesses do ICT
+      @contratos = Contrato.joins(interesse: :responsavel)
+                           .where(responsaveis: { id: @current_responsavel.id })
+                           .includes(interesse: { projeto: :empresa, responsavel: :ict })
+    else
+      render json: { error: "Acesso negado" }, status: :forbidden
+      return
+    end
+
+    render json: @contratos.as_json(
+      include: {
+        interesse: {
+          include: {
+            projeto: {
+              only: [:id, :nome],
+              include: { empresa: { only: [:id, :nome, :foto_perfil] } },
+            },
+            responsavel: {
+              only: [:id, :nome],
+              include: { ict: { only: [:id, :nome, :foto_perfil] } },
+            },
+          },
+        },
+      },
+    )
   end
 
   # GET /contratos/:id
@@ -15,12 +44,27 @@ class ContratosController < ApplicationController
   end
 
   # POST /contratos
+  # POST /contratos
   def create
-    @contrato = Contrato.new(contrato_params)
-    @contrato.data = Date.today
-    @contrato.status = "pendente" # Status inicial padrão
+    @interesse = Interesse.find(params[:interesse_id])
+
+    if @interesse.contrato.present?
+      render json: { error: "Contrato já existe para este interesse" }, status: :unprocessable_entity
+      return
+    end
+
+    @contrato = Contrato.new(interesse: @interesse, data: Date.today, status: "Ativo")
 
     if @contrato.save
+      # Atualiza o status do projeto e do interesse
+      @interesse.update(status: "aceito")
+      @interesse.projeto.update(status: "Em andamento")
+
+      # Rejeita outros interesses no mesmo projeto
+      Interesse.where(projeto_id: @interesse.projeto_id)
+               .where.not(id: @interesse.id)
+               .update_all(status: "rejeitado")
+
       render json: @contrato, status: :created
     else
       render json: @contrato.errors, status: :unprocessable_entity
@@ -61,9 +105,9 @@ class ContratosController < ApplicationController
     if token
       begin
         decoded = JsonWebToken.decode(token)
-        @current_empresa = Empresa.find(decoded[:empresa_id])
+        @current_responsavel = Responsavel.find(decoded[:responsavel_id])
       rescue ActiveRecord::RecordNotFound
-        render json: { error: "Empresa não encontrada" }, status: :unauthorized
+        render json: { error: "Usuário não encontrado" }, status: :unauthorized
       rescue JWT::DecodeError
         render json: { error: "Token inválido" }, status: :unauthorized
       end
@@ -72,7 +116,9 @@ class ContratosController < ApplicationController
     end
   end
 
-  def authorize_empresa
-    render json: { error: "Acesso negado" }, status: :forbidden unless @current_empresa.present?
+  def authorize_user_access
+    unless @current_responsavel.empresa? || @current_responsavel.ict?
+      render json: { error: "Acesso negado" }, status: :forbidden
+    end
   end
 end

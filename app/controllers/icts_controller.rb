@@ -24,8 +24,6 @@ class IctsController < ApplicationController
 
     if @ict.save
       Rails.logger.info "ICT criada com sucesso, sem erros."
-      Rails.logger.info "Enviando e-mail para: #{@ict.email}"
-      IctMailer.ict_created(@ict).deliver_now
       render json: @ict, status: :created
     else
       Rails.logger.info "Erro ao criar a ICT: #{@ict.errors.full_messages}"
@@ -94,10 +92,10 @@ class IctsController < ApplicationController
   end
 
   # Salva a foto de perfil e retorna o caminho relativo para salvar no banco
-  def save_image(uploaded_image, ict_nome)
+  def save_image(uploaded_image, empresa_nome)
     file_extension = File.extname(uploaded_image.original_filename)
-    file_name = "#{ict_nome.parameterize}#{file_extension}"
-    file_path = Rails.root.join("app", "images", file_name)
+    file_name = "#{empresa_nome.parameterize}#{file_extension}"
+    file_path = Rails.root.join("public", "images", file_name) # Salvar em public/images
 
     # Garante que o diretório existe
     FileUtils.mkdir_p(File.dirname(file_path))
@@ -107,8 +105,8 @@ class IctsController < ApplicationController
       file.write(uploaded_image.read)
     end
 
-    # Retorna o caminho relativo
-    "app/images/#{file_name}"
+    # Retorna o caminho relativo para o frontend acessar
+    "/images/#{file_name}"
   end
 
   # Remove a imagem associada

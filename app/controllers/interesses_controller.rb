@@ -1,12 +1,41 @@
 class InteressesController < ApplicationController
   before_action :authenticate_user
-  before_action :authorize_ict
+  before_action :authorize_access, only: [:index]
   before_action :set_interesse, only: [:show, :update, :destroy]
 
   # GET /interesses
   def index
-    @interesses = Interesse.all
-    render json: @interesses
+    if @current_responsavel.empresa?
+      # Usuário Empresa vê apenas interesses nos seus projetos que não possuem contratos
+      @interesses = Interesse.joins(:projeto)
+                             .left_joins(:contrato)
+                             .where(projetos: { empresa_id: @current_responsavel.empresa_id })
+                             .where(contratos: { id: nil }) # Garante que o contrato é nulo
+                             .includes(responsavel: [:ict])
+    elsif @current_responsavel.ict?
+      # Usuário ICT vê apenas interesses associados aos seus projetos
+      @interesses = Interesse.joins(:projeto)
+                             .left_joins(:contrato)
+                             .where(contratos: { id: nil }) # Garante que o contrato é nulo
+                             .where(responsavel_id: @current_responsavel.id) # Filtra interesses do ICT atual
+                             .includes(projeto: { empresa: :responsaveis })
+    else
+      render json: { error: "Acesso negado" }, status: :forbidden
+      return
+    end
+
+    render json: @interesses.as_json(
+      include: {
+        responsavel: {
+          only: [:id, :nome],
+          include: { ict: { only: [:id, :nome, :foto_perfil] } },
+        },
+        projeto: {
+          only: [:id, :nome],
+          include: { empresa: { only: [:id, :nome] } },
+        },
+      },
+    )
   end
 
   # GET /interesses/:id
@@ -18,6 +47,7 @@ class InteressesController < ApplicationController
   def create
     @interesse = Interesse.new(interesse_params)
     @interesse.responsavel = @current_responsavel # Associa o responsável autenticado
+    @interesse.status = "pendente"
 
     if @interesse.save
       render json: @interesse, status: :created
@@ -50,7 +80,7 @@ class InteressesController < ApplicationController
   end
 
   def interesse_params
-    params.permit(:projeto_id, :proposta)
+    params.permit(:projeto_id, :proposta, :status)
   end
 
   def authenticate_user
@@ -71,7 +101,9 @@ class InteressesController < ApplicationController
     end
   end
 
-  def authorize_ict
-    render json: { error: "Acesso negado" }, status: :forbidden unless @current_responsavel&.ict?
+  def authorize_access
+    unless @current_responsavel.empresa? || @current_responsavel.ict?
+      render json: { error: "Acesso negado" }, status: :forbidden
+    end
   end
 end

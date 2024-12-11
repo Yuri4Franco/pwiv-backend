@@ -49,6 +49,7 @@ ActiveRecord::Schema[7.2].define(version: 2024_09_10_232136) do
     t.bigint "projeto_id", null: false
     t.bigint "responsavel_id", null: false
     t.string "proposta", null: false
+    t.string "status", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["projeto_id"], name: "index_interesses_on_projeto_id"
